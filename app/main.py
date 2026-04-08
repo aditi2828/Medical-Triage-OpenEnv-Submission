@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -114,8 +114,10 @@ def list_tasks():
 
 
 @app.post("/reset", response_model=ResetResponse)
-def reset(req: ResetRequest):
+def reset(req: Optional[ResetRequest] = Body(default=None)):
     """Reset the environment for the given task. Returns initial observation."""
+    if req is None:
+        req = ResetRequest()
     valid_tasks = ["task_easy", "task_medium", "task_hard"]
     if req.task_id not in valid_tasks:
         raise HTTPException(status_code=400, detail=f"Invalid task_id. Must be one of: {valid_tasks}")
