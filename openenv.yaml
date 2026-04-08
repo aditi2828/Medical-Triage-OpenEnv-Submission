@@ -1,0 +1,165 @@
+name: medical-triage-openenv
+version: "1.0.0"
+description: >
+  An OpenEnv environment where AI agents learn to triage emergency department patients.
+  Models a real-world clinical task: assessing patient severity, assigning priority levels,
+  recommending immediate interventions, and handling ambiguous presentations.
+  Three tasks range from single-patient triage (easy) through batch prioritisation (medium)
+  to anchoring-bias challenge cases (hard).
+
+author: openenv-submission
+license: MIT
+
+tags:
+  - healthcare
+  - triage
+  - medical
+  - real-world
+  - clinical-decision-support
+
+tasks:
+  - id: task_easy
+    name: "Single Patient Triage"
+    difficulty: easy
+    max_steps: 5
+    description: >
+      Triage a single emergency patient. Assign a priority level (CRITICAL/URGENT/SEMI_URGENT/ROUTINE),
+      identify suspected conditions, recommend immediate interventions, and provide clinical reasoning.
+    success_threshold: 0.65
+
+  - id: task_medium
+    name: "Batch Triage — 5 Patients"
+    difficulty: medium
+    max_steps: 7
+    description: >
+      Simultaneously triage 5 patients arriving at the emergency department. Correctly assign
+      individual priority levels and rank patients by urgency. Includes stroke, subarachnoid
+      haemorrhage, peritonitis, laceration, and pharyngitis cases.
+    success_threshold: 0.65
+
+  - id: task_hard
+    name: "Ambiguous Case — Anchoring Bias"
+    difficulty: hard
+    max_steps: 10
+    description: >
+      Handle a chest pain case in a patient with known anxiety disorder. The agent must
+      overcome anchoring bias, request appropriate diagnostic tests (ECG, troponin),
+      and upgrade the priority to CRITICAL when NSTEMI is confirmed by results.
+    success_threshold: 0.65
+
+action_space:
+  type: object
+  required:
+    - patient_id
+    - priority
+    - suspected_conditions
+    - immediate_actions
+    - reasoning
+  properties:
+    patient_id:
+      type: string
+      description: "ID of the patient being triaged"
+    priority:
+      type: string
+      enum: [CRITICAL, URGENT, SEMI_URGENT, ROUTINE]
+      description: "Triage priority level assigned by the agent"
+    suspected_conditions:
+      type: array
+      items:
+        type: string
+      description: "List of suspected clinical conditions"
+    immediate_actions:
+      type: array
+      items:
+        type: string
+      description: "Immediate clinical interventions recommended"
+    reasoning:
+      type: string
+      description: "Clinical reasoning behind the triage decision"
+    request_more_info:
+      type: array
+      nullable: true
+      items:
+        type: string
+      description: "Additional tests or information requested (hard task)"
+    updated_priority:
+      type: string
+      nullable: true
+      enum: [CRITICAL, URGENT, SEMI_URGENT, ROUTINE, null]
+      description: "Updated priority after receiving new test results (hard task)"
+
+observation_space:
+  type: object
+  properties:
+    task_id:
+      type: string
+    task_name:
+      type: string
+    step_count:
+      type: integer
+    max_steps:
+      type: integer
+    patients:
+      type: array
+      description: "List of patient cases (ground truth hidden)"
+    feedback:
+      type: string
+      description: "Feedback from the previous step"
+    hints:
+      type: array
+      items:
+        type: string
+    additional_info:
+      type: object
+      nullable: true
+      description: "Diagnostic test results revealed after agent requests"
+    best_score_so_far:
+      type: number
+    done:
+      type: boolean
+
+reward:
+  type: float
+  range: [0.0, 1.0]
+  description: >
+    Composite reward with partial progress signal.
+    Components: priority correctness (40%), condition identification (25%),
+    action appropriateness (25%), reasoning quality (10%).
+    Under-triaging a CRITICAL patient is penalised by 0.4 per severity level missed.
+    Over-triaging is penalised by 0.15 per level. Step efficiency bonus up to 0.05.
+
+episode:
+  max_steps: 10
+  reset_on_done: true
+  terminal_conditions:
+    - max_steps_reached
+    - score_above_0.95
+    - hard_task_resolved
+
+api:
+  reset:
+    method: POST
+    path: /reset
+    body:
+      task_id: string
+      session_id: string
+    returns: ResetResponse
+
+  step:
+    method: POST
+    path: /step
+    body:
+      session_id: string
+      action: TriageAction
+    returns: StepResult
+
+  state:
+    method: GET
+    path: /state
+    params:
+      session_id: string
+    returns: StateResult
+
+  health:
+    method: GET
+    path: /health
